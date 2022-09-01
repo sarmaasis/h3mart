@@ -3,7 +3,7 @@ const mongoose = require('mongoose')
 const multer = require('multer')
 const product  = require('./model/productSchema')
 const csvtojson = require('csvtojson')
-const reader = require('xlsx')
+const xlsx = require('xlsx')
 const axios = require('axios');
 const { response } = require("express");
 
@@ -39,15 +39,17 @@ const xlsUpload = multer({
   }
 }) 
 
+var product_code_entry = []
+var price_list = []
+
 app.post('/api/product_price', xlsUpload.single('product_list'), (req, res) => {
     
-    const file = reader.readFile('./uploads/product_list.xlsx')
-    var product_code_entry = []
-    var price = []
+    const file = xlsx.readFile('./uploads/product_list.xlsx')
+   
     json_response = {}
     const sheets = file.SheetNames
     for(let i = 0; i < sheets.length; i++){
-        const temp = reader.utils.sheet_to_json(
+        const temp = xlsx.utils.sheet_to_json(
                 file.Sheets[file.SheetNames[i]])
         temp.forEach((entry) => {
             product_code_entry.push(entry)
@@ -57,15 +59,32 @@ app.post('/api/product_price', xlsUpload.single('product_list'), (req, res) => {
 
     product_code_entry.forEach((code) => {
         axios.get(`https://api.storerestapi.com/products/${code.product_code}`)
-                .then(data => json_response.push(data))
-                        .catch(err => console.log(err));
+                .then(data => {
+                    price_list.push(data.data.data)
+                    convert()
+                })
+                .catch(err => console.log(err));
     })
 
-    console.log()
+    const convert = () => {
+        const worksheet= xlsx.utils.json_to_sheet(price_list)
+        const workbook = xlsx.utils.book_new()
 
-    res.send(req.file)
+        xlsx.utils.book_append_sheet(workbook,worksheet,`price_list`)
+
+        xlsx.write(workbook,{bookType: 'xlsx', type: 'buffer'})
+
+        xlsx.write(workbook,{bookType: 'xlsx', type: 'binary'})
+
+        xlsx.writeFile(workbook,'product_list.xlsx')
+
+    }
+
+    const excel_file = `./product_list.xlsx`
+    res.download(excel_file)
 }
 })
+
 
 
 app.listen(3000, () => {
